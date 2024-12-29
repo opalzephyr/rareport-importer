@@ -127,69 +127,51 @@ export const action = async ({ request }) => {
         throw new Error('Failed to upload image');
       }
 
-      // Now attach the image to the product using fileCreate
-      const imageAttachResponse = await admin.graphql(
-        `#graphql
-          mutation fileCreate($files: [FileCreateInput!]!) {
-            fileCreate(files: $files) {
-              files {
-                ... on MediaImage {
-                  id
-                  status
+      // Attach the image to the product using createMediaInput
+      const createMediaResponse = await admin.graphql(
+        `mutation createMediaInput($input: CreatreMediaInput!) {
+          createMediaInput(input: $input) {
+            product {
+              id
+              mediaConnection {
+                edges {
+                  node {
+                    ... on MediaImage {
+                      id
+                      image {
+                        url
+                      }
+                    }
+                  }
                 }
               }
-              userErrors {
-                field
-                message
-              }
             }
-          }`,
+            media {
+              id
+            }
+            userErrors {
+              field
+              message
+            }
+          }
+        }`,
         {
           variables: {
-            files: [{
-              alt: `${formData.get("title")} - ${formData.get("setName")}`,
-              contentType: "IMAGE",
-              originalSource: resourceUrl
-            }]
+            input: {
+              productId: productId,
+              media: [{
+                alt: `${formData.get("title")} - ${formData.get("setName")}`,
+                mediaContentType: "IMAGE",
+                originalSource: resourceUrl
+              }]
+            }
           }
         }
       );
 
-      const imageAttachResult = await imageAttachResponse.json();
-      if (imageAttachResult.data?.fileCreate?.userErrors?.length > 0) {
-        throw new Error(imageAttachResult.data.fileCreate.userErrors[0].message);
-      }
-
-      // Now associate the image with the product
-      const imageId = imageAttachResult.data?.fileCreate?.files[0]?.id;
-      if (imageId) {
-        const productUpdateResponse = await admin.graphql(
-          `#graphql
-            mutation productUpdate($input: ProductInput!) {
-              productUpdate(input: $input) {
-                product {
-                  id
-                }
-                userErrors {
-                  field
-                  message
-                }
-              }
-            }`,
-          {
-            variables: {
-              input: {
-                id: productId,
-                mediaToAttach: [imageId]
-              }
-            }
-          }
-        );
-
-        const productUpdateResult = await productUpdateResponse.json();
-        if (productUpdateResult.data?.productUpdate?.userErrors?.length > 0) {
-          throw new Error(productUpdateResult.data.productUpdate.userErrors[0].message);
-        }
+      const createMediaResult = await createMediaResponse.json();
+      if (createMediaResult.data?.createMediaInput?.userErrors?.length > 0) {
+        throw new Error(createMediaResult.data.createMediaInput.userErrors[0].message);
       }
     }
 

@@ -1,7 +1,7 @@
 # Learn more about configuring your app at https://shopify.dev/docs/apps/tools/cli/configuration
 
 client_id = "a4d1fa8258a167ba9eb5a86de47d739f"
-application_url = "https://acceptable-realistic-unemployment-route.trycloudflare.com"
+application_url = "https://course-drawings-poet-episodes.trycloudflare.com"
 embedded = true
 name = "Rareport Product Importer"
 handle = "rareport-product-import"
@@ -23,9 +23,9 @@ scopes = "write_products, write_inventory, read_products, write_product_listings
 
 [auth]
 redirect_urls = [
-  "https://acceptable-realistic-unemployment-route.trycloudflare.com/auth/callback",
-  "https://acceptable-realistic-unemployment-route.trycloudflare.com/auth/shopify/callback",
-  "https://acceptable-realistic-unemployment-route.trycloudflare.com/api/auth/callback"
+  "https://course-drawings-poet-episodes.trycloudflare.com/auth/callback",
+  "https://course-drawings-poet-episodes.trycloudflare.com/auth/shopify/callback",
+  "https://course-drawings-poet-episodes.trycloudflare.com/api/auth/callback"
 ]
 
 [pos]
