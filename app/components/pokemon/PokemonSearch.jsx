@@ -1,36 +1,17 @@
-// app/components/pokemon/PokemonSearch.jsx
+// components/pokemon/PokemonSearch.jsx
 import React, { useState, useCallback } from 'react';
-import { useFetcher } from "@remix-run/react";
-import {
-  TextField,
-  Button,
-  BlockStack,
-  Box,
-  Text,
-  Banner,
-  Card,
-  Grid,
-  Pagination,
-  Select
-} from "@shopify/polaris";
+import { BlockStack, Text, Box, Select, Pagination } from "@shopify/polaris";
+import { ApiSearch } from '../common/ApiSearch';
+import { ResultsGrid } from '../common/ResultsGrid';
+import { ProductCard } from '../common/ProductCard';
+import { useApiSearch } from '../../hooks/useApiSearch';
+import { useProductImport } from '../../hooks/useProductImport';
+import { usePagination } from '../../hooks/usePagination';
 
 export function PokemonSearch() {
-  const fetcher = useFetcher();
-  const [searchTerm, setSearchTerm] = useState('');
   const [selectedPriceTypes, setSelectedPriceTypes] = useState({});
-  const [isLoading, setIsLoading] = useState(false);
-  const [results, setResults] = useState([]);
-  const [error, setError] = useState('');
-  const [importingId, setImportingId] = useState(null);
-  const [importSuccess, setImportSuccess] = useState(null);
-  const [currentPage, setCurrentPage] = useState(1);
-  const itemsPerPage = 9; // Changed to 9 items per page
-
-  const handleSearchChange = useCallback((value) => {
-    setSearchTerm(value);
-    setError('');
-  }, []);
-
+  
+  // Initialize search functionality
   const searchPokemonCards = async (query) => {
     try {
       const response = await fetch(
@@ -71,70 +52,53 @@ export function PokemonSearch() {
     }
   };
 
-  const handleSearch = useCallback(async () => {
-    if (!searchTerm.trim()) {
-      setError('Please enter a search term');
-      return;
-    }
+  const { 
+    isLoading, 
+    results, 
+    handleSearch 
+  } = useApiSearch(searchPokemonCards);
 
-    setIsLoading(true);
-    setError('');
-    setResults([]);
-    setImportSuccess(null);
-    setCurrentPage(1);
+  // Initialize pagination
+  const {
+    currentPage,
+    paginatedItems,
+    hasPrevious,
+    hasNext,
+    setCurrentPage,
+    totalPages
+  } = usePagination(results);
 
-    try {
-      const searchResults = await searchPokemonCards(searchTerm);
-      setResults(searchResults);
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setIsLoading(false);
-    }
-  }, [searchTerm]);
+  // Initialize product import functionality
+  const transformFormData = (item) => ({
+    title: `Pokémon TCG | ${item.title} | ${item.setName} / ${item.cardNumber}`,
+    description: item.description,
+    vendor: item.vendor,
+    productType: item.type,
+    cardNumber: item.cardNumber,
+    setName: item.setName,
+    rarity: item.rarity,
+    imageUrl: item.image,
+    hp: item.hp,
+    types: JSON.stringify(item.types),
+    artist: item.artist,
+    selectedPriceType: selectedPriceTypes[item.id],
+    tcgplayerUrl: item.tcgplayer?.url,
+    tcgplayerPrices: JSON.stringify(item.tcgplayer?.prices)
+  });
 
-  const handleImport = useCallback((item) => {
-    setImportingId(item.id);
-    setImportSuccess(null);
+  const {
+    handleImport,
+    isImporting,
+    getImportStatus
+  } = useProductImport(transformFormData);
 
-    const formData = {
-      title: item.title,
-      description: item.description,
-      vendor: item.vendor,
-      productType: item.type,
-      cardNumber: item.cardNumber,
-      setName: item.setName,
-      rarity: item.rarity,
-      imageUrl: item.image,
-      hp: item.hp,
-      types: JSON.stringify(item.types),
-      artist: item.artist,
-      selectedPriceType: selectedPriceTypes[item.id],
-      tcgplayerUrl: item.tcgplayer?.url,
-      tcgplayerPrices: JSON.stringify(item.tcgplayer?.prices)
-    };
-
-    fetcher.submit(formData, { method: 'POST' });
-  }, [fetcher, selectedPriceTypes]);
-
-  React.useEffect(() => {
-    if (fetcher.data && importingId) {
-      setImportSuccess({
-        id: importingId,
-        success: !fetcher.data.error,
-        message: fetcher.data.error || 'Product successfully imported!',
-        productUrl: fetcher.data.productUrl
-      });
-      setImportingId(null);
-    }
-  }, [fetcher.data, importingId]);
-
-  const renderPriceTypeSelect = (tcgplayer, item) => {
-    if (!tcgplayer || !tcgplayer.prices) {
+  // Render price type select for TCGPlayer prices
+  const renderPriceTypeSelect = useCallback((item) => {
+    if (!item.tcgplayer?.prices) {
       return null;
     }
 
-    const priceTypes = Object.keys(tcgplayer.prices);
+    const priceTypes = Object.keys(item.tcgplayer.prices);
     const options = priceTypes.map(type => ({
       label: type.charAt(0).toUpperCase() + type.slice(1),
       value: type
@@ -148,125 +112,57 @@ export function PokemonSearch() {
         value={selectedPriceTypes[item.id] || ''}
       />
     );
-  };
+  }, [selectedPriceTypes]);
 
-  const renderCardDetails = (item) => (
-    <Card key={item.id}>
-      <Box padding="400">
-        <BlockStack gap="400">
-          <Box>
-            <img 
-              src={item.image} 
-              alt={item.title}
-              style={{ width: '100%', maxWidth: '250px' }}
-            />
-          </Box>
-          <BlockStack gap="200">
-            <Text variant="headingMd" as="h3">{item.title}</Text>
-            <Text variant="bodySm">Set: {item.set}</Text>
-            <Text variant="bodySm">Rarity: {item.rarity}</Text>
-            <Text variant="bodySm">Types: {item.types?.join(', ') || 'N/A'}</Text>
-            <Text variant="bodySm">Artist: {item.artist || 'N/A'}</Text>
-            <Text variant="bodySm">Card Number: {item.details.number}/{item.details.printedTotal}</Text>
-            
-            {item.tcgplayer && (
-              <Box paddingBlockStart="400">
-                {renderPriceTypeSelect(item.tcgplayer, item)}
-              </Box>
-            )}
-          </BlockStack>
-            <Box>
-            <Button
-              onClick={() => handleImport(item)}
-              loading={importingId === item.id}
-              disabled={importingId !== null}
-            >
-              Import as Product
-            </Button>
-            {importSuccess?.id === item.id && (
-              <Box paddingBlockStart="300">
-                <Banner status={importSuccess.success ? 'success' : 'critical'}>
-                  <BlockStack gap="200">
-                    <Text>{importSuccess.message}</Text>
-                    {importSuccess.success && importSuccess.productUrl && (
-                      <Button
-                        plain
-                        external
-                        url={importSuccess.productUrl}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          window.open(importSuccess.productUrl, '_blank');
-                        }}
-                      >
-                        Edit Product →
-                      </Button>
-                    )}
-                  </BlockStack>
-                </Banner>
-              </Box>
-            )}
-          </Box>
-        </BlockStack>
-      </Box>
-    </Card>
-  );
-
-  // Calculate pagination
-  const totalPages = Math.ceil(results.length / itemsPerPage);
-  const paginatedResults = results.slice(
-    (currentPage - 1) * itemsPerPage,
-    currentPage * itemsPerPage
-  );
+  // Render custom fields for Pokemon cards
+  const renderPokemonFields = useCallback((item) => (
+    <BlockStack gap="200">
+      <Text variant="bodySm">Set: {item.set}</Text>
+      <Text variant="bodySm">Rarity: {item.rarity}</Text>
+      <Text variant="bodySm">Types: {item.types?.join(', ') || 'N/A'}</Text>
+      <Text variant="bodySm">Artist: {item.artist || 'N/A'}</Text>
+      <Text variant="bodySm">Card Number: {item.details.number}/{item.details.printedTotal}</Text>
+    </BlockStack>
+  ), []);
 
   return (
     <BlockStack gap="400">
-      <TextField
-        label="Search Term"
-        value={searchTerm}
-        onChange={handleSearchChange}
-        autoComplete="off"
-        placeholder="Enter card name..."
-        clearButton
-        onClearButtonClick={() => setSearchTerm('')}
+      <ApiSearch 
+        onSearch={handleSearch}
+        loading={isLoading}
+        placeholder="Enter Pokemon card name..."
       />
 
-      <Button onClick={handleSearch} loading={isLoading} primary>
-        Search
-      </Button>
-
-      {error && (
-        <Banner status="critical">
-          <p>{error}</p>
-        </Banner>
-      )}
-
-      {isLoading ? (
-        <Text>Loading...</Text>
-      ) : paginatedResults.length > 0 ? (
+      {paginatedItems.length > 0 && (
         <BlockStack gap="400">
-          <Grid gap="400">
-            {paginatedResults.map((item) => (
-              <Grid.Cell columnSpan={{ xs: 6, sm: 6, md: 4, lg: 4, xl: 4 }} key={item.id}>
-                {renderCardDetails(item)}
-              </Grid.Cell>
+          <ResultsGrid>
+            {paginatedItems.map(item => (
+              <ProductCard
+                key={item.id}
+                item={item}
+                onImport={handleImport}
+                renderCustomFields={renderPokemonFields}
+                isImporting={isImporting(item.id)}
+                importSuccess={getImportStatus(item.id)?.success}
+                importError={getImportStatus(item.id)?.error}
+                priceTypeSelect={renderPriceTypeSelect(item)}
+              />
             ))}
-          </Grid>
+          </ResultsGrid>
           
           {totalPages > 1 && (
-            <Box paddingBlockStart="400">
+            <Box padding="400">
               <Pagination
                 label={`Page ${currentPage} of ${totalPages}`}
-                hasPrevious={currentPage > 1}
+                hasPrevious={hasPrevious}
                 onPrevious={() => setCurrentPage(currentPage - 1)}
-                hasNext={currentPage < totalPages}
+                hasNext={hasNext}
                 onNext={() => setCurrentPage(currentPage + 1)}
               />
             </Box>
           )}
         </BlockStack>
-      ) : searchTerm && !error && !isLoading ? (
-        <Banner>No results found</Banner>
-      ) : null}
+      )}
     </BlockStack>
   );
 }
