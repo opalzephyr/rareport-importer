@@ -129,42 +129,31 @@ export const action = async ({ request }) => {
 
       // Attach the image to the product using createMediaInput
       const createMediaResponse = await admin.graphql(
-        `mutation createMediaInput($input: CreatreMediaInput!) {
-          createMediaInput(input: $input) {
-            product {
-              id
-              mediaConnection {
-                edges {
-                  node {
-                    ... on MediaImage {
-                      id
-                      image {
-                        url
-                      }
-                    }
-                  }
-                }
-              }
-            }
+        `mutation productCreateMedia($media: [CreateMediaInput!]!, $productId: ID!) {
+          productCreateMedia(media: $media, productId: $productId) {
             media {
-              id
+              alt
+              mediaContentType
+              status
             }
-            userErrors {
+            mediaUserErrors {
               field
               message
+            }
+            product {
+              id
+              title
             }
           }
         }`,
         {
           variables: {
-            input: {
-              productId: productId,
-              media: [{
-                alt: `${formData.get("title")} - ${formData.get("setName")}`,
-                mediaContentType: "IMAGE",
-                originalSource: resourceUrl
-              }]
-            }
+            productId: productId,
+            media: [{
+              alt: `${formData.get("title")} - ${formData.get("setName")}`,
+              mediaContentType: "IMAGE",
+              originalSource: resourceUrl
+            }]
           }
         }
       );
