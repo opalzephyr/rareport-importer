@@ -164,12 +164,12 @@ export const action = async ({ request }) => {
       }
     }
 
-    // 3. Update the product price
-    const getDefaultVariantIdResponse = await admin.graphql(
+    // 3. Update the product variant prices
+    const getAllVariantIdsResponse = await admin.graphql(
       `#graphql
-        query GetDefaultVariantId($id: ID!) {
+        query GetAllVariantIds($id: ID!) {
           product(id: $id) {
-            variants(first: 1) {
+            variants(first: 100) {
               nodes {
                 id
               }
@@ -182,21 +182,33 @@ export const action = async ({ request }) => {
         }
       }
     );
-    
-    const getDefaultVariantIdResult = await getDefaultVariantIdResponse.json();
-    const variantId = getDefaultVariantIdResult.data.product.variants.nodes[0].id;
-    
-    const productUpdateResponse = await admin.graphql(
+
+    const getAllVariantIdsResult = await getAllVariantIdsResponse.json();
+    const variantIds = getAllVariantIdsResult.data.product.variants.nodes.map(variant => variant.id);
+
+    // Prepare the variants input for bulk update
+    const variantsInput = variantIds.map(variantId => ({
+      id: variantId,
+      price: parseFloat(formData.get("price"))
+    }));
+
+    // 4. Bulk update variant prices
+    const bulkUpdateResponse = await admin.graphql(
       `#graphql
-        mutation UpdateProductPrice($input: ProductInput!) {
-          productUpdate(input: $input) {
+        mutation productVariantsBulkUpdate($productId: ID!, $variants: [ProductVariantsBulkInput!]!) {
+          productVariantsBulkUpdate(productId: $productId, variants: $variants) {
             product {
               id
-              title
-              variants(first: 1) {
-                nodes {
-                  id
-                  price
+            }
+            productVariants {
+              id
+              metafields(first: 2) {
+                edges {
+                  node {
+                    namespace
+                    key
+                    value
+                  }
                 }
               }
             }
@@ -208,22 +220,15 @@ export const action = async ({ request }) => {
         }`,
       {
         variables: {
-          input: {
-            id: productId,
-            variants: [
-              {
-                id: variantId,
-                price: parseFloat(formData.get("price"))
-              }
-            ]
-          }
+          productId: productId,
+          variants: variantsInput
         }
       }
     );
-    
-    const productUpdateResult = await productUpdateResponse.json();
-    if (productUpdateResult.data?.productUpdate?.userErrors?.length > 0) {
-      throw new Error(productUpdateResult.data.productUpdate.userErrors[0].message);
+
+    const bulkUpdateResult = await bulkUpdateResponse.json();
+    if (bulkUpdateResult.data?.productVariantsBulkUpdate?.userErrors?.length > 0) {
+      throw new Error(bulkUpdateResult.data.productVariantsBulkUpdate.userErrors[0].message);
     }
 
     // 4. Add metafields
