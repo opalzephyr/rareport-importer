@@ -3,6 +3,7 @@ import { Layout, Page, Card, Text, BlockStack } from "@shopify/polaris";
 import { TitleBar } from "@shopify/app-bridge-react";
 import { authenticate } from "../shopify.server";
 import { PokemonSearch } from "../components/pokemon/PokemonSearch";
+import { createPokemonMetafields } from "../mutations/setupPokemonMetafields";
 
 export const loader = async ({ request }) => {
   await authenticate.admin(request);
@@ -79,7 +80,6 @@ export const action = async ({ request }) => {
     );
 
     const productResult = await productResponse.json();
-
     if (productResult.data?.productCreate?.userErrors?.length > 0) {
       throw new Error(productResult.data.productCreate.userErrors[0].message);
     }
@@ -175,7 +175,25 @@ export const action = async ({ request }) => {
       }
     }
 
-    // 6. Update variant prices if needed
+    // 4. Create metafields for the product
+    console.log('Types data:', formData.get("types"));
+    
+    const metafieldsResult = await createPokemonMetafields(admin, productId, {
+      setName: formData.get("setName"),
+      cardNumber: formData.get("cardNumber"),
+      rarity: formData.get("rarity"),
+      hp: formData.get("hp"),
+      types: formData.get("types"),
+      artist: formData.get("artist"),
+      marketPrice: formData.get("price"),
+      tcgplayerUrl: formData.get("tcgplayerUrl")
+    });
+
+    if (!metafieldsResult.success) {
+      throw new Error(`Failed to create metafields: ${metafieldsResult.error}`);
+    }
+
+    // 5. Update variant prices if needed
     const variantUpdateResponse = await admin.graphql(
       `#graphql
       query GetAllVariantIds($id: ID!) {
@@ -227,7 +245,8 @@ export const action = async ({ request }) => {
     
     return json({
       success: true,
-      productId
+      productId,
+      metafields: metafieldsResult.data?.productMetafieldsSet?.metafields
     });
 
   } catch (error) {
