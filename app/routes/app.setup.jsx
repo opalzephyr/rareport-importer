@@ -1,20 +1,16 @@
-//app/routes/app.setup.jsx
+// app/routes/app.setup.jsx
 import { json } from "@remix-run/node";
 import { useLoaderData } from "@remix-run/react";
 import { Page, Layout, Card, BlockStack, Text, Banner } from "@shopify/polaris";
 import { authenticate } from "../shopify.server";
-import { setupPokemonMetaobjects } from "../mutations/setupPokemonMetaobjects";
+import { setupPokemonStore } from "../mutations/setupPokemonStore";
 
 export const loader = async ({ request }) => {
   const { admin } = await authenticate.admin(request);
   
   try {
-    const result = await setupPokemonMetaobjects(admin);
-    return json({
-      success: result.success,
-      error: result.error,
-      definition: result.definition
-    });
+    const result = await setupPokemonStore(admin);
+    return json(result);
   } catch (error) {
     return json({
       success: false,
@@ -24,7 +20,7 @@ export const loader = async ({ request }) => {
 };
 
 export default function SetupPage() {
-  const { success, error, definition } = useLoaderData();
+  const { success, error, metaobjectDefinition, metafieldDefinition, pinnedPage } = useLoaderData();
 
   return (
     <Page>
@@ -38,15 +34,22 @@ export default function SetupPage() {
               
               {success ? (
                 <Banner status="success">
-                  <p>Successfully set up Pokemon TCG metaobject definition!</p>
-                  {definition && (
-                    <p>Created definition type: {definition.type}</p>
-                  )}
+                  <BlockStack gap="400">
+                    <Text>Successfully set up Pokemon TCG infrastructure!</Text>
+                    {metaobjectDefinition && (
+                      <Text>Created metaobject definition: {metaobjectDefinition.type}</Text>
+                    )}
+                    {metafieldDefinition && (
+                      <Text>Created metafield definition: {metafieldDefinition.name}</Text>
+                    )}
+                    {pinnedPage && (
+                      <Text>Created pinned page for Pokemon TCG products</Text>
+                    )}
+                  </BlockStack>
                 </Banner>
               ) : (
                 <Banner status="critical">
-                  <p>Failed to set up Pokemon TCG definition:</p>
-                  <p>{error}</p>
+                  <Text>Setup failed: {error}</Text>
                 </Banner>
               )}
             </BlockStack>
