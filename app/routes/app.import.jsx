@@ -66,9 +66,9 @@ export const action = async ({ request }) => {
     }
 
     const productId = productResult.data?.productCreate?.product?.id;
-    const variantId = productResult.data?.productCreate?.product?.variants?.edges[0]?.node?.id;
+    //const variantId = productResult.data?.productCreate?.product?.variants?.edges[0]?.node?.id;
 
-    if (!productId || !variantId) {
+    if (!productId) {
       throw new Error("Failed to create product");
     }
 
@@ -164,14 +164,41 @@ export const action = async ({ request }) => {
       }
     }
 
-    // 3. Update the variant price
-    const variantResponse = await admin.graphql(
+    // 3. Update the product price
+    const getDefaultVariantIdResponse = await admin.graphql(
       `#graphql
-        mutation productVariantUpdate($input: ProductVariantInput!) {
-          productVariantUpdate(input: $input) {
-            productVariant {
+        query GetDefaultVariantId($id: ID!) {
+          product(id: $id) {
+            variants(first: 1) {
+              nodes {
+                id
+              }
+            }
+          }
+        }`,
+      {
+        variables: {
+          id: productId
+        }
+      }
+    );
+    
+    const getDefaultVariantIdResult = await getDefaultVariantIdResponse.json();
+    const variantId = getDefaultVariantIdResult.data.product.variants.nodes[0].id;
+    
+    const productUpdateResponse = await admin.graphql(
+      `#graphql
+        mutation UpdateProductPrice($input: ProductInput!) {
+          productUpdate(input: $input) {
+            product {
               id
-              price
+              title
+              variants(first: 1) {
+                nodes {
+                  id
+                  price
+                }
+              }
             }
             userErrors {
               field
@@ -182,16 +209,21 @@ export const action = async ({ request }) => {
       {
         variables: {
           input: {
-            id: variantId,
-            price: formData.get("price")
+            id: productId,
+            variants: [
+              {
+                id: variantId,
+                price: parseFloat(formData.get("price"))
+              }
+            ]
           }
         }
       }
     );
-
-    const variantResult = await variantResponse.json();
-    if (variantResult.data?.productVariantUpdate?.userErrors?.length > 0) {
-      throw new Error(variantResult.data.productVariantUpdate.userErrors[0].message);
+    
+    const productUpdateResult = await productUpdateResponse.json();
+    if (productUpdateResult.data?.productUpdate?.userErrors?.length > 0) {
+      throw new Error(productUpdateResult.data.productUpdate.userErrors[0].message);
     }
 
     // 4. Add metafields
