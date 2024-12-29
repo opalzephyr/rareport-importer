@@ -35,7 +35,6 @@ export default function HomePage() {
 
   return (
     <Page>
-      <TitleBar title="Rareport Import Center" />
       <Layout>
         <Layout.Section>
           <BlockStack gap="500">
