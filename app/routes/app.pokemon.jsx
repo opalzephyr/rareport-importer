@@ -72,7 +72,7 @@ export const action = async ({ request }) => {
             vendor: formData.get("vendor"),
             productType: "Trading Card",
             tags: ["Pokemon TCG"],
-            status: "ACTIVE",
+            status: "DRAFT",
             collectionsToJoin: [categoryId]
           },
         }
@@ -177,7 +177,7 @@ export const action = async ({ request }) => {
 
     // 4. Create metafields for the product
     console.log('Types data:', formData.get("types"));
-    
+
     const metafieldsResult = await createPokemonMetafields(admin, productId, {
       setName: formData.get("setName"),
       cardNumber: formData.get("cardNumber"),
