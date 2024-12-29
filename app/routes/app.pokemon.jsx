@@ -3,8 +3,6 @@ import { Layout, Page, Card, Text, BlockStack } from "@shopify/polaris";
 import { TitleBar } from "@shopify/app-bridge-react";
 import { authenticate } from "../shopify.server";
 import { PokemonSearch } from "../components/pokemon/PokemonSearch";
-//import { POKEMON_CONFIG, checkGraphQLResponse, createPokemonCardMetaobject } from "../mutations/setupPokemonStore";
-
 
 export const loader = async ({ request }) => {
   await authenticate.admin(request);
@@ -177,59 +175,6 @@ export const action = async ({ request }) => {
       }
     }
 
-    // 4. Create Pokemon card metaobject
-    /*const metaobjectResult = await createPokemonCardMetaobject(admin, {
-      cardNumber: formData.get("cardNumber"),
-      setName: formData.get("setName"),
-      rarity: formData.get("rarity"),
-      subtypes: JSON.parse(formData.get("subtypes") || "[]"),
-      hp: formData.get("hp"),
-      types: JSON.parse(formData.get("types") || "[]"),
-      artist: formData.get("artist"),
-      nationalPokedexNumbers: JSON.parse(formData.get("nationalPokedexNumbers") || "[]"),
-      marketPrice: parseFloat(formData.get("price")),
-      tcgplayerUrl: formData.get("tcgplayerUrl"),
-      productId: productId
-    });
-
-    if (!metaobjectResult.success) {
-      throw new Error(`Failed to create card metaobject: ${metaobjectResult.error}`);
-    }
-
-    // 5. Link the metaobject to the product using metafield
-    // Add this after creating the metaobject in your action function
-    const setMetafieldResponse = await admin.graphql(`#graphql
-      mutation productMetafieldsSet($productId: ID!, $metafields: [MetafieldsSetInput!]!) {
-        productMetafieldsSet(productId: $productId, metafields: $metafields) {
-          metafields {
-            id
-          }
-          userErrors {
-            field
-            message
-          }
-        }
-      }`,
-      {
-        variables: {
-          productId: productId,
-          metafields: [{
-            namespace: POKEMON_CONFIG.NAMESPACE,
-            key: POKEMON_CONFIG.METAFIELD_KEY,
-            type: "metaobject_reference",
-            value: metaobjectResult.metaobject.id
-          }]
-        }
-      }
-    ).then(response => response.json())
-     .then(result => checkGraphQLResponse(result, 'productMetafieldsSet'));
-
-    const metafieldSetResult = await setMetafieldResponse.json();
-    if (metafieldSetResult.data?.productMetafieldsSet?.userErrors?.length > 0) {
-      throw new Error(metafieldSetResult.data.productMetafieldsSet.userErrors[0].message);
-    }
-    */
-
     // 6. Update variant prices if needed
     const variantUpdateResponse = await admin.graphql(
       `#graphql
@@ -282,8 +227,7 @@ export const action = async ({ request }) => {
     
     return json({
       success: true,
-      productId,
-      metaobjectId: metaobjectResult.metaobject.id
+      productId
     });
 
   } catch (error) {
