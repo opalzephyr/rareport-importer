@@ -4,6 +4,7 @@ import { Box, Layout, Page, Card, Text, BlockStack } from "@shopify/polaris";
 import { TitleBar } from "@shopify/app-bridge-react";
 import { authenticate } from "../shopify.server";
 import { PokemonSearch } from "../components/pokemon/PokemonSearch";
+import { createPokemonCardMetaobject } from "../mutations/setupPokemonMetaobjects";
 
 export const loader = async ({ request }) => {
   await authenticate.admin(request);
@@ -11,7 +12,7 @@ export const loader = async ({ request }) => {
 };
 
 function sanitizeFilename(str) {
-return str
+  return str
     .replace(/[^a-z0-9-_]/gi, '_')
     .replace(/_+/g, '_')
     .replace(/^_|_$/g, '')
@@ -23,268 +24,234 @@ export const action = async ({ request }) => {
   const formData = await request.formData();
 
   try {
-    // 1. First create the product without images
-const productResponse = await admin.graphql(
-    `#graphql
-    mutation productCreate($input: ProductInput!) {
+    // 1. Query the category ID
+    const categoryResponse = await admin.graphql(
+      `#graphql
+      query GetCategoryId($title: String!) {
+        collections(first: 1, query: $title) {
+          edges {
+            node {
+              id
+            }
+          }
+        }
+      }`,
+      {
+        variables: {
+          title: "Collectible Trading Cards"
+        }
+      }
+    );
+    
+    const categoryResult = await categoryResponse.json();
+    const categoryId = categoryResult.data.collections.edges[0]?.node.id;
+    if (!categoryId) {
+      throw new Error("Could not find Collectible Trading Cards collection");
+    }
+
+    // 2. Create the product
+    const productResponse = await admin.graphql(
+      `#graphql
+      mutation productCreate($input: ProductInput!) {
         productCreate(input: $input) {
-        product {
+          product {
             id
             title
             handle
-            variants(first: 1) {
-            edges {
-                node {
-                id
-                }
-            }
-            }
-        }
-        userErrors {
+          }
+          userErrors {
             field
             message
+          }
         }
+      }`,
+      {
+        variables: {
+          input: {
+            title: `Pokémon TCG | ${formData.get("title")} | ${formData.get("setName")} / ${formData.get("cardNumber")}`,
+            descriptionHtml: formData.get("description"),
+            vendor: formData.get("vendor"),
+            productType: "Trading Card",
+            tags: ["Pokemon TCG"],
+            status: "ACTIVE",
+            collectionsToJoin: [categoryId]
+          },
         }
-    }`,
-    {
-    variables: {
-        input: {
-        title: formData.get("title"),
-        descriptionHtml: formData.get("description"),
-        vendor: formData.get("vendor"),
-        productType: formData.get("productType"),
-        status: "ACTIVE"
-        },
-    },
+      }
+    );
+
+    const productResult = await productResponse.json();
+
+    if (productResult.data?.productCreate?.userErrors?.length > 0) {
+      throw new Error(productResult.data.productCreate.userErrors[0].message);
     }
-);
 
-const productResult = await productResponse.json();
+    const productId = productResult.data?.productCreate?.product?.id;
+    if (!productId) {
+      throw new Error("Failed to create product");
+    }
 
-if (productResult.data?.productCreate?.userErrors?.length > 0) {
-    throw new Error(productResult.data.productCreate.userErrors[0].message);
-}
-
-const productId = productResult.data?.productCreate?.product?.id;
-//const variantId = productResult.data?.productCreate?.product?.variants?.edges[0]?.node?.id;
-
-if (!productId) {
-    throw new Error("Failed to create product");
-}
-
-// 2. If we have an image URL, handle the image upload
-if (formData.get("imageUrl")) {
-    // First get a staged upload URL
-    const stagedUploadsResponse = await admin.graphql(
-    `#graphql
+    // 3. Handle image upload if provided
+    if (formData.get("imageUrl")) {
+      const stagedUploadsResponse = await admin.graphql(
+        `#graphql
         mutation stagedUploadsCreate($input: [StagedUploadInput!]!) {
-        stagedUploadsCreate(input: $input) {
+          stagedUploadsCreate(input: $input) {
             stagedTargets {
-            resourceUrl
-            url
-            parameters {
+              resourceUrl
+              url
+              parameters {
                 name
                 value
+              }
             }
-            }
-        }
+          }
         }`,
-    {
-        variables: {
-        input: [
-            {
-            filename: sanitizeFilename(`${formData.get("title")}.jpg`),
-            mimeType: "image/jpeg",
-            httpMethod: "POST",
-            resource: "IMAGE"
+        {
+          variables: {
+            input: [
+              {
+                filename: sanitizeFilename(`${formData.get("title")}.jpg`),
+                mimeType: "image/jpeg",
+                httpMethod: "POST",
+                resource: "IMAGE"
+              }
+            ]
+          }
+        }
+      );
+
+      const stagedUploadsResult = await stagedUploadsResponse.json();
+      const { url, parameters, resourceUrl } = stagedUploadsResult.data.stagedUploadsCreate.stagedTargets[0];
+
+      // Fetch and upload the image
+      const imageResponse = await fetch(formData.get("imageUrl"));
+      const imageBlob = await imageResponse.blob();
+
+      const uploadFormData = new FormData();
+      parameters.forEach(({ name, value }) => {
+        uploadFormData.append(name, value);
+      });
+      uploadFormData.append('file', imageBlob);
+
+      const uploadResponse = await fetch(url, {
+        method: 'POST',
+        body: uploadFormData
+      });
+
+      if (!uploadResponse.ok) {
+        throw new Error('Failed to upload image');
+      }
+
+      // Attach the image to the product
+      const createMediaResponse = await admin.graphql(
+        `#graphql
+        mutation productCreateMedia($media: [CreateMediaInput!]!, $productId: ID!) {
+          productCreateMedia(media: $media, productId: $productId) {
+            media {
+              alt
+              mediaContentType
+              status
             }
-        ]
+            mediaUserErrors {
+              field
+              message
+            }
+          }
+        }`,
+        {
+          variables: {
+            productId: productId,
+            media: [{
+              alt: `${formData.get("title")} - ${formData.get("setName")}`,
+              mediaContentType: "IMAGE",
+              originalSource: resourceUrl
+            }]
+          }
         }
+      );
+
+      const createMediaResult = await createMediaResponse.json();
+      if (createMediaResult.data?.productCreateMedia?.mediaUserErrors?.length > 0) {
+        throw new Error(createMediaResult.data.productCreateMedia.mediaUserErrors[0].message);
+      }
     }
-    );
 
-    const stagedUploadsResult = await stagedUploadsResponse.json();
-    const { url, parameters, resourceUrl } = stagedUploadsResult.data.stagedUploadsCreate.stagedTargets[0];
-
-    // Fetch the image from the provided URL
-    const imageResponse = await fetch(formData.get("imageUrl"));
-    const imageBlob = await imageResponse.blob();
-
-    // Create form data for the upload
-    const uploadFormData = new FormData();
-    parameters.forEach(({ name, value }) => {
-    uploadFormData.append(name, value);
+    // 4. Create Pokemon card metaobject
+    const metaobjectResult = await createPokemonCardMetaobject(admin, {
+      cardNumber: formData.get("cardNumber"),
+      setName: formData.get("setName"),
+      rarity: formData.get("rarity"),
+      subtypes: JSON.parse(formData.get("subtypes") || "[]"),
+      hp: formData.get("hp"),
+      types: JSON.parse(formData.get("types") || "[]"),
+      artist: formData.get("artist"),
+      nationalPokedexNumbers: JSON.parse(formData.get("nationalPokedexNumbers") || "[]"),
+      marketPrice: parseFloat(formData.get("price")),
+      tcgplayerUrl: formData.get("tcgplayerUrl"),
+      productId: productId
     });
-    uploadFormData.append('file', imageBlob);
 
-    // Upload to the staged URL
-    const uploadResponse = await fetch(url, {
-    method: 'POST',
-    body: uploadFormData
-    });
-
-    if (!uploadResponse.ok) {
-    throw new Error('Failed to upload image');
+    if (!metaobjectResult.success) {
+      throw new Error(`Failed to create card metaobject: ${metaobjectResult.error}`);
     }
 
-    // Attach the image to the product using createMediaInput
-    const createMediaResponse = await admin.graphql(
-    `mutation productCreateMedia($media: [CreateMediaInput!]!, $productId: ID!) {
-        productCreateMedia(media: $media, productId: $productId) {
-        media {
-            alt
-            mediaContentType
-            status
-        }
-        mediaUserErrors {
-            field
-            message
-        }
-        product {
-            id
-            title
-        }
-        }
-    }`,
-    {
-        variables: {
-        productId: productId,
-        media: [{
-            alt: `${formData.get("title")} - ${formData.get("setName")}`,
-            mediaContentType: "IMAGE",
-            originalSource: resourceUrl
-        }]
-        }
-    }
-    );
-
-    const createMediaResult = await createMediaResponse.json();
-    if (createMediaResult.data?.createMediaInput?.userErrors?.length > 0) {
-    throw new Error(createMediaResult.data.createMediaInput.userErrors[0].message);
-    }
-}
-
-// 3. Update the product variant prices
-const getAllVariantIdsResponse = await admin.graphql(
-    `#graphql
-    query GetAllVariantIds($id: ID!) {
+    // 5. Update variant prices if needed
+    const variantUpdateResponse = await admin.graphql(
+      `#graphql
+      query GetAllVariantIds($id: ID!) {
         product(id: $id) {
-        variants(first: 100) {
+          variants(first: 100) {
             nodes {
-            id
+              id
             }
+          }
         }
+      }`,
+      {
+        variables: {
+          id: productId
         }
-    }`,
-    {
-    variables: {
-        id: productId
-    }
-    }
-);
+      }
+    );
 
-const getAllVariantIdsResult = await getAllVariantIdsResponse.json();
-const variantIds = getAllVariantIdsResult.data.product.variants.nodes.map(variant => variant.id);
+    const variantResult = await variantUpdateResponse.json();
+    const variantIds = variantResult.data.product.variants.nodes.map(variant => variant.id);
 
-// Prepare the variants input for bulk update
-const variantsInput = variantIds.map(variantId => ({
-    id: variantId,
-    price: parseFloat(formData.get("price"))
-}));
+    const variantsInput = variantIds.map(variantId => ({
+      id: variantId,
+      price: parseFloat(formData.get("price"))
+    }));
 
-// 4. Bulk update variant prices
-const bulkUpdateResponse = await admin.graphql(
-    `#graphql
-    mutation productVariantsBulkUpdate($productId: ID!, $variants: [ProductVariantsBulkInput!]!) {
+    const bulkUpdateResponse = await admin.graphql(
+      `#graphql
+      mutation productVariantsBulkUpdate($productId: ID!, $variants: [ProductVariantsBulkInput!]!) {
         productVariantsBulkUpdate(productId: $productId, variants: $variants) {
-        product {
-            id
-        }
-        productVariants {
-            id
-            metafields(first: 2) {
-            edges {
-                node {
-                namespace
-                key
-                value
-                }
-            }
-            }
-        }
-        userErrors {
+          userErrors {
             field
             message
+          }
         }
+      }`,
+      {
+        variables: {
+          productId: productId,
+          variants: variantsInput
         }
-    }`,
-    {
-    variables: {
-        productId: productId,
-        variants: variantsInput
-    }
-    }
-);
+      }
+    );
 
-const bulkUpdateResult = await bulkUpdateResponse.json();
-if (bulkUpdateResult.data?.productVariantsBulkUpdate?.userErrors?.length > 0) {
-    throw new Error(bulkUpdateResult.data.productVariantsBulkUpdate.userErrors[0].message);
-}
-
-// 4. Add metafields
-const metafieldsResponse = await admin.graphql(
-    `#graphql
-    mutation metafieldsSet($metafields: [MetafieldsSetInput!]!) {
-        metafieldsSet(metafields: $metafields) {
-        metafields {
-            id
-            key
-            value
-        }
-        userErrors {
-            field
-            message
-        }
-        }
-    }`,
-    {
-    variables: {
-        metafields: [
-        {
-            ownerId: productId,
-            namespace: "custom",
-            key: "card_number",
-            type: "single_line_text_field",
-            value: formData.get("cardNumber")
-        },
-        {
-            ownerId: productId,
-            namespace: "custom",
-            key: "set_name",
-            type: "single_line_text_field",
-            value: formData.get("setName")
-        },
-        {
-            ownerId: productId,
-            namespace: "custom",
-            key: "rarity",
-            type: "single_line_text_field",
-            value: formData.get("rarity")
-        }
-        ]
+    const bulkUpdateResult = await bulkUpdateResponse.json();
+    if (bulkUpdateResult.data?.productVariantsBulkUpdate?.userErrors?.length > 0) {
+      throw new Error(bulkUpdateResult.data.productVariantsBulkUpdate.userErrors[0].message);
     }
-    }
-);
-
-const metafieldsResult = await metafieldsResponse.json();
-if (metafieldsResult.data?.metafieldsSet?.userErrors?.length > 0) {
-    throw new Error(metafieldsResult.data.metafieldsSet.userErrors[0].message);
-}
     
     return json({
       success: true,
-      productId
+      productId,
+      metaobjectId: metaobjectResult.metaobject.id
     });
+
   } catch (error) {
     console.error('Product creation error:', error);
     return json({

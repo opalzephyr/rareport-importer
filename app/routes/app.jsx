@@ -23,6 +23,7 @@ export default function App() {
         <Link to="/app/pokemon">Pokemon TCG</Link>
         <Link to="/app/mtg">Magic: The Gathering</Link>
         <Link to="/app/igdb">Video Games</Link>
+        <Link to="/app/setup">Setup</Link>
       </NavMenu>
       <Outlet />
     </AppProvider>

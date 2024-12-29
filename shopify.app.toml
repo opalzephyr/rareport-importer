@@ -1,7 +1,7 @@
 # Learn more about configuring your app at https://shopify.dev/docs/apps/tools/cli/configuration
 
 client_id = "a4d1fa8258a167ba9eb5a86de47d739f"
-application_url = "https://reg-nation-thats-adopt.trycloudflare.com"
+application_url = "https://ez-bonus-bahrain-left.trycloudflare.com"
 embedded = true
 name = "Rareport Product Importer"
 handle = "rareport-product-import"
@@ -19,13 +19,13 @@ api_version = "2024-10"
 
 [access_scopes]
 # Learn more at https://shopify.dev/docs/apps/tools/cli/configuration#access_scopes
-scopes = "write_products, write_inventory, read_products, write_product_listings, write_files"
+scopes = "write_products, write_inventory, read_products, write_product_listings, write_files, read_metaobjects, write_metaobjects, read_metaobject_definitions, write_metaobject_definitions"
 
 [auth]
 redirect_urls = [
-  "https://reg-nation-thats-adopt.trycloudflare.com/auth/callback",
-  "https://reg-nation-thats-adopt.trycloudflare.com/auth/shopify/callback",
-  "https://reg-nation-thats-adopt.trycloudflare.com/api/auth/callback"
+  "https://ez-bonus-bahrain-left.trycloudflare.com/auth/callback",
+  "https://ez-bonus-bahrain-left.trycloudflare.com/auth/shopify/callback",
+  "https://ez-bonus-bahrain-left.trycloudflare.com/api/auth/callback"
 ]
 
 [pos]
