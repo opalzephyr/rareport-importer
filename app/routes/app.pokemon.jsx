@@ -1,12 +1,61 @@
-// app/routes/app.pokemon.jsx
+import { json } from "@remix-run/node";
 import { Page, Layout, Text, Card, BlockStack } from "@shopify/polaris";
 import { authenticate } from "../shopify.server";
-import { json } from "@remix-run/node";
+import { useCallback, useState } from "react";
 import { ApiSearch } from "../components/common/ApiSearch";
 import { ResultsGrid } from "../components/common/ResultsGrid";
 import { ProductCard } from "../components/common/ProductCard";
-import { useCallback, useState } from "react";
 import { useProductImport } from "../hooks/useProductImport";
+
+const POKEMON_NAMESPACE = "pokemon_tcg";
+const COLLECTION_TITLE = "Collectible Trading Cards";
+
+// Utility functions for data validation and transformation
+const validateMetafieldValue = (value, type) => {
+  switch (type) {
+    case 'single_line_text_field':
+      return String(value || '').trim();
+    case 'number_integer':
+      const num = parseInt(value, 10);
+      return isNaN(num) ? '0' : num.toString();
+    case 'list.single_line_text_field':
+      try {
+        // Handle both string and array inputs
+        const parsed = typeof value === 'string' ? JSON.parse(value) : value;
+        return JSON.stringify(Array.isArray(parsed) ? parsed : []);
+      } catch {
+        return '[]';
+      }
+    default:
+      return String(value || '');
+  }
+};
+
+const constructMetafields = (data) => {
+  const metafieldDefinitions = [
+    { key: "set_name", type: "single_line_text_field", value: data.setName },
+    { key: "card_number", type: "single_line_text_field", value: data.cardNumber },
+    { key: "rarity", type: "single_line_text_field", value: data.rarity },
+    { key: "hp", type: "number_integer", value: data.hp },
+    { key: "types", type: "list.single_line_text_field", value: data.types },
+    { key: "artist", type: "single_line_text_field", value: data.artist }
+  ];
+
+  return metafieldDefinitions.map(field => ({
+    namespace: POKEMON_NAMESPACE,
+    key: field.key,
+    value: validateMetafieldValue(field.value, field.type),
+    type: field.type
+  }));
+};
+
+const sanitizeFilename = (str) => {
+  return str
+    .replace(/[^a-z0-9-_]/gi, '_')
+    .replace(/_+/g, '_')
+    .replace(/^_|_$/g, '')
+    .toLowerCase();
+};
 
 export const loader = async ({ request }) => {
   await authenticate.admin(request);
@@ -17,10 +66,56 @@ export async function action({ request }) {
   const { admin } = await authenticate.admin(request);
   
   try {
-    const formData = await request.json();
+    const formData = await request.formData();
+    const data = Object.fromEntries(formData.entries());
+    console.log("Received form data on server:", data); // Log received data
+
+    // Validate required fields
+    const requiredFields = ['title', 'setName', 'cardNumber'];
+    const missingFields = requiredFields.filter(field => !data[field]);
+    if (missingFields.length > 0) {
+      throw new Error(`Missing required fields: ${missingFields.join(', ')}`);
+    }
+
+    console.log("Validated data:", data);
+
+    // 1. Query the category ID with error handling
+    const categoryResponse = await admin.graphql(
+      `#graphql
+      query GetCategoryId($title: String!) {
+        collections(first: 1, query: $title) {
+          edges {
+            node {
+              id
+            }
+          }
+        }
+      }`,
+      {
+        variables: {
+          title: COLLECTION_TITLE
+        }
+      }
+    );
     
-    // Create the product in Shopify
-    const response = await admin.graphql(
+    const categoryResult = await categoryResponse.json();
+    const categoryId = categoryResult.data.collections.edges[0]?.node.id;
+    if (!categoryId) {
+      throw new Error(`Collection "${COLLECTION_TITLE}" not found`);
+    }
+
+    // 2. Create the product with validated data
+    const productInput = {
+      title: data.title,
+      descriptionHtml: data.description,
+      vendor: data.vendor || 'Pokemon TCG',
+      productType: data.productType || 'Trading Card',
+      tags: ['Pokemon TCG'],
+      status: 'DRAFT',
+      collectionsToJoin: [categoryId]
+    };
+
+    const productResponse = await admin.graphql(
       `#graphql
         mutation productCreate($input: ProductInput!) {
           productCreate(input: $input) {
@@ -36,71 +131,231 @@ export async function action({ request }) {
         }`,
       {
         variables: {
-          input: {
-            title: formData.title,
-            descriptionHtml: formData.description,
-            vendor: formData.vendor,
-            productType: formData.productType,
-            images: [
-              {
-                src: formData.imageUrl,
-                altText: formData.title
-              }
-            ],
-            metafields: [
-              {
-                namespace: "pokemon",
-                key: "card_number",
-                value: formData.cardNumber,
-                type: "single_line_text_field"
-              },
-              {
-                namespace: "pokemon",
-                key: "set_name",
-                value: formData.setName,
-                type: "single_line_text_field"
-              },
-              {
-                namespace: "pokemon",
-                key: "rarity",
-                value: formData.rarity,
-                type: "single_line_text_field"
-              },
-              {
-                namespace: "pokemon",
-                key: "types",
-                value: formData.types,
-                type: "multi_line_text_field"
-              },
-              {
-                namespace: "pokemon",
-                key: "artist",
-                value: formData.artist,
-                type: "single_line_text_field"
-              }
-            ]
-          }
+          input: productInput
         }
       }
     );
 
-    const responseJson = await response.json();
+    const productResult = await productResponse.json();
     
-    if (responseJson.data.productCreate.userErrors.length > 0) {
-      return json({
-        error: responseJson.data.productCreate.userErrors[0].message
-      });
+    if (productResult.data.productCreate.userErrors.length > 0) {
+      throw new Error(productResult.data.productCreate.userErrors[0].message);
+    }
+
+    const productId = productResult.data.productCreate.product.id;
+
+    // 3. Handle image upload with proper error handling
+    if (data.imageUrl) {
+      try {
+        // Prepare staged upload
+        const stagedUploadsResponse = await admin.graphql(
+          `#graphql
+          mutation stagedUploadsCreate($input: [StagedUploadInput!]!) {
+            stagedUploadsCreate(input: $input) {
+              stagedTargets {
+                resourceUrl
+                url
+                parameters {
+                  name
+                  value
+                }
+              }
+              userErrors {
+                field
+                message
+              }
+            }
+          }`,
+          {
+            variables: {
+              input: [
+                {
+                  filename: sanitizeFilename(`${data.title || 'pokemon'}.jpg`),
+                  mimeType: "image/jpeg",
+                  httpMethod: "POST",
+                  resource: "IMAGE"
+                }
+              ]
+            }
+          }
+        );
+
+        const stagedUploadsResult = await stagedUploadsResponse.json();
+        if (stagedUploadsResult.data.stagedUploadsCreate.userErrors.length > 0) {
+          throw new Error(stagedUploadsResult.data.stagedUploadsCreate.userErrors[0].message);
+        }
+
+        const { url, parameters, resourceUrl } = stagedUploadsResult.data.stagedUploadsCreate.stagedTargets[0];
+
+        // Fetch and upload the image
+        const imageResponse = await fetch(data.imageUrl);
+        if (!imageResponse.ok) {
+          throw new Error('Failed to fetch image from source');
+        }
+
+        const imageBlob = await imageResponse.blob();
+        const uploadFormData = new FormData();
+        parameters.forEach(({ name, value }) => {
+          uploadFormData.append(name, value);
+        });
+        uploadFormData.append('file', imageBlob);
+
+        const uploadResponse = await fetch(url, {
+          method: 'POST',
+          body: uploadFormData
+        });
+
+        if (!uploadResponse.ok) {
+          throw new Error('Failed to upload image to Shopify');
+        }
+
+        // Attach the image to the product
+        const createMediaResponse = await admin.graphql(
+          `#graphql
+          mutation productCreateMedia($media: [CreateMediaInput!]!, $productId: ID!) {
+            productCreateMedia(media: $media, productId: $productId) {
+              media {
+                alt
+                mediaContentType
+                status
+              }
+              mediaUserErrors {
+                field
+                message
+              }
+            }
+          }`,
+          {
+            variables: {
+              productId: productId,
+              media: [{
+                alt: `${data.title} - ${data.setName}`,
+                mediaContentType: "IMAGE",
+                originalSource: resourceUrl
+              }]
+            }
+          }
+        );
+
+        const createMediaResult = await createMediaResponse.json();
+        if (createMediaResult.data?.productCreateMedia?.mediaUserErrors?.length > 0) {
+          throw new Error(createMediaResult.data.productCreateMedia.mediaUserErrors[0].message);
+        }
+      } catch (imageError) {
+        console.error("Image upload error:", imageError);
+        // Continue with product creation even if image upload fails
+      }
+    }
+
+    // 4. Set up metafields with validated data
+    const metafields = constructMetafields(data);
+    const metafieldsResponse = await admin.graphql(
+      `#graphql
+      mutation metafieldsSet($metafields: [MetafieldsSetInput!]!) {
+        metafieldsSet(metafields: $metafields) {
+          metafields {
+            id
+            namespace
+            key
+            value
+          }
+          userErrors {
+            field
+            message
+          }
+        }
+      }`,
+      {
+        variables: {
+          metafields: metafields.map(metafield => ({
+            ...metafield,
+            ownerId: productId
+          }))
+        }
+      }
+    );
+
+    const metafieldsResult = await metafieldsResponse.json();
+    if (metafieldsResult.data?.metafieldsSet?.userErrors?.length > 0) {
+      console.error("Metafields set error:", metafieldsResult.data.metafieldsSet.userErrors);
+      // Continue with product creation even if metafields fail
+    }
+
+    // 5. Update variant prices with proper validation
+    try {
+      const variantResponse = await admin.graphql(
+        `#graphql
+        query GetAllVariantIds($id: ID!) {
+          product(id: $id) {
+            variants(first: 100) {
+              nodes {
+                id
+              }
+            }
+          }
+        }`,
+        {
+          variables: {
+            id: productId
+          }
+        }
+      );
+
+      const variantResult = await variantResponse.json();
+      const variantIds = variantResult.data.product.variants.nodes.map(variant => variant.id);
+      
+      if (variantIds.length > 0 && data.price) {
+        const price = parseFloat(data.price);
+        if (!isNaN(price)) {
+          const variantsInput = variantIds.map(variantId => ({
+            id: variantId,
+            price: price.toString()
+          }));
+
+          const bulkUpdateResponse = await admin.graphql(
+            `#graphql
+            mutation productVariantsBulkUpdate($productId: ID!, $variants: [ProductVariantsBulkInput!]!) {
+              productVariantsBulkUpdate(productId: $productId, variants: $variants) {
+                userErrors {
+                  field
+                  message
+                }
+              }
+            }`,
+            {
+              variables: {
+                productId: productId,
+                variants: variantsInput
+              }
+            }
+          );
+
+          const bulkUpdateResult = await bulkUpdateResponse.json();
+          if (bulkUpdateResult.data?.productVariantsBulkUpdate?.userErrors?.length > 0) {
+            console.error("Variant bulk update error:", bulkUpdateResult.data.productVariantsBulkUpdate.userErrors);
+          }
+        }
+      }
+    } catch (priceError) {
+      console.error("Price update error:", priceError);
+      // Continue with product creation even if price update fails
     }
 
     return json({
       success: true,
-      productId: responseJson.data.productCreate.product.id,
-      productHandle: responseJson.data.productCreate.product.handle
+      productId,
+      productHandle: productResult.data.productCreate.product.handle,
+      productUrl: `/admin/products/${productResult.data.productCreate.product.handle}`
     });
 
   } catch (error) {
     console.error("Product import error:", error);
-    return json({ error: error.message });
+    return json({ 
+      error: error.message,
+      details: error.stack
+    }, {
+      status: 400
+    });
   }
 }
 
@@ -108,25 +363,12 @@ export default function PokemonPage() {
   const [searchResults, setSearchResults] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
 
-  // Initialize the product import hook
-  const transformFormData = (item) => ({
-    title: `Pokémon TCG | ${item.title} | ${item.set}`,
-    description: item.description,
-    vendor: "Pokemon TCG",
-    productType: "Trading Card",
-    imageUrl: item.image,
-    cardNumber: item.details.number,
-    setName: item.set,
-    rarity: item.rarity,
-    types: JSON.stringify(item.types),
-    artist: item.artist
-  });
-
   const {
     handleImport,
     isImporting,
-    getImportStatus
-  } = useProductImport(transformFormData);
+    getImportStatus,
+    getErrors
+  } = useProductImport();
   
   const handleSearch = useCallback(async (searchTerm) => {
     console.log("Searching for:", searchTerm);
@@ -145,20 +387,25 @@ export default function PokemonPage() {
       const transformedResults = data.data.map(card => ({
         id: card.id,
         title: card.name,
-        image: card.images.small,
-        description: `${card.name} - ${card.rarity || 'Unknown'} Pokemon Card from ${card.set.name} Set`,
-        set: card.set.name,
+        image: card.images?.small,
+        description: `${card.name} - ${card.rarity || 'Unknown'} Pokemon Card from ${card.set?.name} Set`,
+        set: card.set?.name,
         rarity: card.rarity,
         details: {
           number: card.number,
-          series: card.set.series,
-          printedTotal: card.set.printedTotal,
-          releaseDate: card.set.releaseDate
+          series: card.set?.series,
+          printedTotal: card.set?.printedTotal,
+          releaseDate: card.set?.releaseDate
         },
         types: card.types || [],
-        artist: card.artist
-      }));
+        artist: card.artist,
+        price: card.cardmarket?.prices?.averageSellPrice || 
+               card.tcgplayer?.prices?.holofoil?.market || 
+               card.tcgplayer?.prices?.normal?.market || 
+               0
+      })).filter(card => card.title && card.set); // Filter out invalid cards
 
+      console.log("Transformed search results:", transformedResults[0]); // Log first result
       setSearchResults(transformedResults);
     } catch (err) {
       console.error("Search error:", err);
@@ -170,11 +417,12 @@ export default function PokemonPage() {
 
   const renderCustomFields = useCallback((item) => (
     <BlockStack gap="200">
-      <Text variant="bodySm">Set: {item.set}</Text>
-      <Text variant="bodySm">Rarity: {item.rarity}</Text>
+      <Text variant="bodySm">Set: {item.set || 'N/A'}</Text>
+      <Text variant="bodySm">Rarity: {item.rarity || 'N/A'}</Text>
       <Text variant="bodySm">Types: {item.types?.join(', ') || 'N/A'}</Text>
       <Text variant="bodySm">Artist: {item.artist || 'N/A'}</Text>
-      <Text variant="bodySm">Card Number: {item.details.number}/{item.details.printedTotal}</Text>
+      <Text variant="bodySm">Card Number: {item.details.number || 'N/A'}/{item.details.printedTotal || 'N/A'}</Text>
+      <Text variant="bodySm">Price: ${item.price ? item.price.toFixed(2) : '0.00'}</Text>
     </BlockStack>
   ), []);
 
@@ -201,8 +449,8 @@ export default function PokemonPage() {
                       onImport={handleImport}
                       renderCustomFields={renderCustomFields}
                       isImporting={isImporting(result.id)}
-                      importSuccess={getImportStatus(result.id)?.success}
-                      importError={getImportStatus(result.id)?.error}
+                      importSuccess={getImportStatus(result.id)?.message}
+                      importError={getErrors(result.id)}
                     />
                   ))}
                 </ResultsGrid>

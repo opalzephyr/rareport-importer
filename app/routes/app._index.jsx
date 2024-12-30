@@ -1,6 +1,6 @@
 // app/routes/app._index.jsx
 import { Page, Layout, Card, BlockStack, Button, Text } from "@shopify/polaris";
-import { TitleBar } from "@shopify/app-bridge-react";
+//import { TitleBar } from "@shopify/app-bridge-react";
 import { useNavigate } from "@remix-run/react";
 import { authenticate } from "../shopify.server";
 

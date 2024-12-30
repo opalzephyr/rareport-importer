@@ -1,4 +1,3 @@
-// components/common/ProductCard.jsx
 import React from 'react';
 import { Card, BlockStack, Box, Text, Banner, Button } from "@shopify/polaris";
 
