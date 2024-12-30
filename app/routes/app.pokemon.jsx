@@ -438,136 +438,38 @@ export default function PokemonPage() {
   ), []);
 
   return (
-    <Page
-      title="Pokemon TCG Import"
-      subtitle="Import Pokemon cards directly into your Shopify store"
-      primaryAction={{
-        content: 'View Setup Guide',
-        onAction: () => navigate('/app/setup'),
-      }}
-    >
-      <BlockStack gap="500">
-        {/* Info Banner */}
-        <Banner status="info" icon={InfoIcon}>
-          <Text>
-            Search for Pokemon cards by name. Pricing data uses typical market price points.
-            Each card will be imported with detailed metadata and current market prices.
-          </Text>
-        </Banner>
+    <Page>
+      <Layout>
+        <Layout.Section>
+          <Card>
+            <BlockStack gap="400" padding="400">
+              <Text as="h1" variant="headingLg">Pokemon TCG Import</Text>
+              
+              <ApiSearch 
+                onSearch={handleSearch}
+                loading={isLoading}
+                placeholder="Search Pokemon cards..."
+              />
 
-        <Layout>
-          <Layout.Section>
-            <Card>
-              <BlockStack gap="400" padding="400">
-                {/* Enhanced Search Section */}
-                <Box padding="400" background="bg-surface-secondary" borderRadius="200">
-                  <BlockStack gap="300">
-                    <InlineStack gap="200" align="center">
-                      <Icon source={SearchIcon} color="base" />
-                      <Text variant="headingSm">Card Search</Text>
-                    </InlineStack>
-                    <ApiSearch 
-                      onSearch={handleSearch}
-                      loading={isLoading}
-                      placeholder="Enter Pokemon card name..."
+              {searchResults.length > 0 && (
+                <ResultsGrid>
+                  {searchResults.map(result => (
+                    <ProductCard
+                      key={result.id}
+                      item={result}
+                      onImport={handleImport}
+                      renderCustomFields={renderCustomFields}
+                      isImporting={isImporting(result.id)}
+                      importSuccess={getImportStatus(result.id)?.message}
+                      importError={getErrors(result.id)}
                     />
-                  </BlockStack>
-                </Box>
-
-                {/* Results Section */}
-                {searchResults.length > 0 ? (
-                  <BlockStack gap="400">
-                    <InlineStack align="space-between">
-                      <Text variant="headingSm">Search Results</Text>
-                      <Badge status="info">{searchResults.length} cards found</Badge>
-                    </InlineStack>
-                    
-                    <ResultsGrid>
-                      {searchResults.map(result => (
-                        <ProductCard
-                          key={result.id}
-                          item={result}
-                          onImport={handleImport}
-                          renderCustomFields={(item) => (
-                            <BlockStack gap="200">
-                              <InlineStack wrap={false} gap="200">
-                                <Badge status="success">Set: {item.set || 'N/A'}</Badge>
-                                <Badge status="attention">{item.rarity || 'N/A'}</Badge>
-                              </InlineStack>
-                              <Box paddingBlockStart="200">
-                                <BlockStack gap="200">
-                                  <Text variant="bodySm" color="subdued">
-                                    Types: {item.types?.join(', ') || 'N/A'}
-                                  </Text>
-                                  <Text variant="bodySm" color="subdued">
-                                    Artist: {item.artist || 'N/A'}
-                                  </Text>
-                                  <InlineStack align="space-between">
-                                    <Text variant="bodySm">
-                                      Card: {item.details.number || 'N/A'}/{item.details.printedTotal || 'N/A'}
-                                    </Text>
-                                    <Text variant="heading2xl" as="p">
-                                      ${item.price ? item.price.toFixed(2) : '0.00'}
-                                    </Text>
-                                  </InlineStack>
-                                </BlockStack>
-                              </Box>
-                            </BlockStack>
-                          )}
-                          isImporting={isImporting(result.id)}
-                          importSuccess={getImportStatus(result.id)?.message}
-                          importError={getErrors(result.id)}
-                        />
-                      ))}
-                    </ResultsGrid>
-                  </BlockStack>
-                ) : (
-                  <Box padding="400">
-                    <EmptyState
-                      heading="Search for Pokemon cards"
-                      image="/api/placeholder/400/200"
-                      imageContained
-                    >
-                      <p>Enter a card name to search the Pokemon Trading Card Game database</p>
-                    </EmptyState>
-                  </Box>
-                )}
-              </BlockStack>
-            </Card>
-          </Layout.Section>
-
-          {/* Help Section */}
-          <Layout.Section variant="oneThird">
-            <BlockStack gap="400">
-              <Card>
-                <BlockStack gap="400" padding="400">
-                  <Text variant="headingMd" as="h2">Quick Tips</Text>
-                  <BlockStack gap="200">
-                    <Text as="p" variant="bodySm">• Search by exact card name for best results</Text>
-                    <Text as="p" variant="bodySm">• Prices are pulled from TCGPlayer market data</Text>
-                    <Text as="p" variant="bodySm">• All cards are imported with full metadata</Text>
-                    <Text as="p" variant="bodySm">• Images are automatically downloaded</Text>
-                  </BlockStack>
-                </BlockStack>
-              </Card>
-
-              <Card>
-                <BlockStack gap="400" padding="400">
-                  <Text variant="headingMd" as="h2">Import Settings</Text>
-                  <BlockStack gap="200">
-                    <Badge status="info" progress="complete">
-                      Collection: Collectible Trading Cards
-                    </Badge>
-                    <Badge status="success" progress="complete">
-                      Metafields: Configured
-                    </Badge>
-                  </BlockStack>
-                </BlockStack>
-              </Card>
+                  ))}
+                </ResultsGrid>
+              )}
             </BlockStack>
-          </Layout.Section>
-        </Layout>
-      </BlockStack>
+          </Card>
+        </Layout.Section>
+      </Layout>
     </Page>
   );
 }
