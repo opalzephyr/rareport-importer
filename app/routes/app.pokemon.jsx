@@ -20,12 +20,19 @@ const validateMetafieldValue = (value, type) => {
       return isNaN(num) ? '0' : num.toString();
     case 'list.single_line_text_field':
       try {
-        // Handle both string and array inputs
         const parsed = typeof value === 'string' ? JSON.parse(value) : value;
         return JSON.stringify(Array.isArray(parsed) ? parsed : []);
       } catch {
         return '[]';
       }
+    case 'json':
+      try {
+        return JSON.stringify(value || {});
+      } catch {
+        return '{}';
+      }
+    case 'url':  // Added url type handling
+      return String(value || '').trim();
     default:
       return String(value || '');
   }
@@ -38,7 +45,9 @@ const constructMetafields = (data) => {
     { key: "rarity", type: "single_line_text_field", value: data.rarity },
     { key: "hp", type: "number_integer", value: data.hp },
     { key: "types", type: "list.single_line_text_field", value: data.types },
-    { key: "artist", type: "single_line_text_field", value: data.artist }
+    { key: "artist", type: "single_line_text_field", value: data.artist },
+    { key: "tcgplayer_url", type: "url", value: data.tcgplayerUrl },
+    { key: "tcgplayer_prices", type: "json", value: data.tcgplayerPrices }
   ];
 
   return metafieldDefinitions.map(field => ({
@@ -386,7 +395,7 @@ export default function PokemonPage() {
       
       const transformedResults = data.data.map(card => ({
         id: card.id,
-        title: card.name,
+        title: `Pokémon TCG | ${card.name} | ${card.set?.name} / ${card.number}`,
         image: card.images?.small,
         description: `${card.name} - ${card.rarity || 'Unknown'} Pokemon Card from ${card.set?.name} Set`,
         set: card.set?.name,
@@ -397,8 +406,10 @@ export default function PokemonPage() {
           printedTotal: card.set?.printedTotal,
           releaseDate: card.set?.releaseDate
         },
+        hp: card.hp || '0',  // Add HP from card data
         types: card.types || [],
         artist: card.artist,
+        tcgplayer: card.tcgplayer, // Add full tcgplayer object
         price: card.cardmarket?.prices?.averageSellPrice || 
                card.tcgplayer?.prices?.holofoil?.market || 
                card.tcgplayer?.prices?.normal?.market || 

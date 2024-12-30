@@ -81,20 +81,22 @@ export function useProductImport() {
       // Transform and validate the data
       const formData = new FormData();
       const validatedData = sanitizeFormData({
-        title: item.title,
+        title: item.title, // Updated title format
         description: item.description,
         vendor: item.vendor,
         productType: item.productType,
-        cardNumber: item.cardNumber,
-        setName: item.setName,
+        // Fix: Pull cardNumber from nested details object
+        cardNumber: item.details?.number || '',
+        // Fix: Pull setName from top-level set property
+        setName: item.set || 'N/A',
         rarity: item.rarity,
         imageUrl: item.imageUrl || item.image, // Support both formats
         hp: item.hp,
         types: item.types,
-        artist: item.artist,
+        artist: item.artist || 'N/A',
         price: item.price,
-        tcgplayerUrl: item?.tcgplayer?.url,
-        tcgplayerPrices: item?.tcgplayer?.prices
+        tcgplayerUrl: item.tcgplayer?.url || '', // Get URL from tcgplayer object
+        tcgplayerPrices: item.tcgplayer?.prices || {} // Get full prices object
       });
 
       console.log("Validated data before submission:", validatedData); // Log processed data
