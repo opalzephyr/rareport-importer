@@ -20,7 +20,16 @@ export function ProductCard({
       .map(([type, priceData]) => ({
         type,
         price: priceData.market,
-        display: type.replace(/([A-Z])/g, ' $1').trim() // Add spaces before capital letters
+        display: type
+          // First add spaces before capital letters
+          .replace(/([A-Z])/g, ' $1')
+          // Split into words
+          .split(' ')
+          // Capitalize first letter of each word
+          .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+          // Join back together
+          .join(' ')
+          .trim()
       }))
       .sort((a, b) => b.price - a.price); // Sort by price descending
   };
