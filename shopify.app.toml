@@ -1,7 +1,7 @@
 # Learn more about configuring your app at https://shopify.dev/docs/apps/tools/cli/configuration
 
 client_id = "a4d1fa8258a167ba9eb5a86de47d739f"
-application_url = "https://bs-made-beth-shoppers.trycloudflare.com"
+application_url = "https://ping-playback-alberta-supervision.trycloudflare.com"
 embedded = true
 name = "Rareport Product Importer"
 handle = "rareport-product-import"
@@ -23,9 +23,9 @@ scopes = "write_products, write_inventory, read_products, write_product_listings
 
 [auth]
 redirect_urls = [
-  "https://bs-made-beth-shoppers.trycloudflare.com/auth/callback",
-  "https://bs-made-beth-shoppers.trycloudflare.com/auth/shopify/callback",
-  "https://bs-made-beth-shoppers.trycloudflare.com/api/auth/callback"
+  "https://ping-playback-alberta-supervision.trycloudflare.com/auth/callback",
+  "https://ping-playback-alberta-supervision.trycloudflare.com/auth/shopify/callback",
+  "https://ping-playback-alberta-supervision.trycloudflare.com/api/auth/callback"
 ]
 
 [pos]

@@ -94,9 +94,9 @@ export function useProductImport() {
         hp: item.hp,
         types: item.types,
         artist: item.artist || 'N/A',
-        price: item.price,
         tcgplayerUrl: item.tcgplayer?.url || '', // Get URL from tcgplayer object
-        tcgplayerPrices: item.tcgplayer?.prices || {} // Get full prices object
+        price: item.selectedPrice || item.price, // Use selected price if available
+        tcgplayerPrices: item.tcgplayer?.prices || {} 
       });
 
       console.log("Validated data before submission:", validatedData); // Log processed data

@@ -318,9 +318,9 @@ export async function action({ request }) {
         if (!isNaN(price)) {
           const variantsInput = variantIds.map(variantId => ({
             id: variantId,
-            price: price.toString()
+            price: price.toString()  // Use the price that was selected on frontend
           }));
-
+      
           const bulkUpdateResponse = await admin.graphql(
             `#graphql
             mutation productVariantsBulkUpdate($productId: ID!, $variants: [ProductVariantsBulkInput!]!) {
